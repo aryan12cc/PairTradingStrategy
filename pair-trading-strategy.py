@@ -112,6 +112,17 @@ class PairTradingStrategy:
     def get_profit(self, current_balance, mastercard_stocks, visa_stocks, mastercard_price, visa_price):
         return current_balance + (mastercard_stocks * mastercard_price) + (visa_stocks * visa_price)
 
+    def check_trade(self, mastercard_stocks, visa_stocks, buy_stock_name):
+        # checking if trade is possible without exceeding the limit of max stocks
+        if buy_stock_name == 'Visa':
+            if abs(mastercard_stocks - 1) > 100 or abs(visa_stocks + self.hedge_ratio) > 100:
+                return False
+            return True
+        else:
+            if abs(mastercard_stocks + 1) > 100 or abs(visa_stocks - self.hedge_ratio) > 100:
+                return False
+            return True
+
     def simulate_trading(self, mastercard_data, visa_data):
         mastercard_stocks = 0
         visa_stocks = 0
@@ -119,30 +130,18 @@ class PairTradingStrategy:
         z_score_list = list(self.z_score)
         self.profits.clear()
         for i in range(len(mastercard_data)):
-            # if the z-score is > 0.75, then short the dependent stock and long the independent stock
+            # if the z-score is > 0.75, then short mastercard, long visa
             if z_score_list[i] > 0.75:
-                mastercard_stocks -= 1
-                visa_stocks += self.hedge_ratio
-                if mastercard_stocks < -100 or visa_stocks > 100:
-                    mastercard_stocks += 1
-                    visa_stocks -= self.hedge_ratio
-                    current_profit = self.get_profit(current_balance, mastercard_stocks, visa_stocks, mastercard_data[i], visa_data[i])
-                    self.profits.append(current_profit)
-                    continue
-                # calculating the profit
-                current_balance += (mastercard_data[i]) - (visa_data[i] * self.hedge_ratio)
-            # if the z-score is < -0.75, then long the dependent stock and short the independent stock
-            elif z_score_list[i] < -0.75:
-                mastercard_stocks += 1
-                visa_stocks -= self.hedge_ratio
-                if mastercard_stocks > 100 or visa_stocks < -100:
+                if self.check_trade(mastercard_stocks, visa_stocks, 'Mastercard') == True:
                     mastercard_stocks -= 1
                     visa_stocks += self.hedge_ratio
-                    current_profit = self.get_profit(current_balance, mastercard_stocks, visa_stocks, mastercard_data[i], visa_data[i])
-                    self.profits.append(current_profit)
-                    continue
-                # calculating the profit
-                current_balance += (visa_data[i] * self.hedge_ratio) - (mastercard_data[i])
+                    current_balance += (mastercard_data[i]) - (visa_data[i] * self.hedge_ratio)
+            # if the z-score is < -0.75, then long mastercard, short visa
+            elif z_score_list[i] < -0.75:
+                if self.check_trade(mastercard_stocks, visa_stocks, 'Visa') == True:
+                    mastercard_stocks += 1
+                    visa_stocks -= self.hedge_ratio
+                    current_balance += (visa_data[i] * self.hedge_ratio) - (mastercard_data[i])
             # if the z-score is between -0.25 and 0.25, we close the positions
             # if the z-score is beyond -3 and 3, we trigger stop loss
             # if it is the last day of the market, we even our position
@@ -150,6 +149,7 @@ class PairTradingStrategy:
                 current_balance += mastercard_stocks * mastercard_data[i] + visa_stocks * visa_data[i]
                 mastercard_stocks = 0
                 visa_stocks = 0
+            # calculating profit
             current_profit = self.get_profit(current_balance, mastercard_stocks, visa_stocks, mastercard_data[i], visa_data[i])
             self.profits.append(current_profit)
         return self.profits
