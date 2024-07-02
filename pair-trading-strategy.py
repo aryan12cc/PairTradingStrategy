@@ -1,17 +1,3 @@
-'''
-Steps to initiate the pair trading strategy:
-1. Check if both the stocks are correlated and cointegrated
-    a. The correlation should be above a certain threshold (say 0.95)
-    b. The p-value of ADF (Augmented Dickey-Fuller) test should be less than 0.05
-2. Calculate the spread between the two stocks
-3. Calculate the z-score of the spread (standard score)
-    a. The z-score has to be mean reverting since the stocks are cointegrated
-4.  a. If the z-score is > +2, then short the dependent stock and long the independent stock
-    b. If the z-score is < -2, then long the dependent stock and short the independent stock
-5. Apply hedging to reduce the risk
-6. Also apply some basic stock market signals
-'''
-
 import sys
 import pandas as pd
 import numpy as np
@@ -21,57 +7,77 @@ from statsmodels.tsa.stattools import coint
 import statsmodels.api as sm
 from scipy import stats
 
+def plot_data(x, y, title, xtitle, ytitle, horizontal_lines):
+    plt.figure(figsize = (10, 5))
+    plt.plot(x, y)
+    plt.title(title)
+    plt.xlabel(xtitle)
+    plt.ylabel(ytitle)
+
+    plt.gca().xaxis.set_major_locator(mdates.MonthLocator(interval = 6))
+    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+
+    if horizontal_lines == True:
+        plt.axhline(1, color = 'red', linestyle = '--')
+        plt.axhline(0, color = 'black', linestyle = '-')
+        plt.axhline(-1, color = 'red', linestyle = '--')
+    plt.show()
+
 class PairTradingStrategy:
     def __init__(self):
-        self.train_profits, self.test_profits = [], []
-        self.train_dates, self.test_dates, self.dates = [], [], []
+        self.mastercard_train, self.visa_train = [], []
+        self.mastercard_test, self.visa_test = [], []
+        self.mastercard_db = pd.DataFrame()
+        self.visa_db = pd.DataFrame()
+        self.profits = []
+        self.dates_train, self.dates_test = [], []
+        self.z_score = []
+        self.hedge_ratio = 0
 
     def read_data(self):
         # reading mastercard and visa data
-        mastercard = pd.read_csv('data/mastercard.csv')    
-        visa = pd.read_csv('data/visa.csv')
-        # resetting the index
-        mastercard.reset_index(drop = True, inplace = True)
-        visa.reset_index(drop = True, inplace = True)
+        self.mastercard_db = pd.read_csv('data/mastercard.csv')
+        self.visa_db = pd.read_csv('data/visa.csv') 
         # checking only the dates that are common in both the dataframes
-        mastercard = mastercard[mastercard['Date'].isin(visa['Date'])]
-        visa = visa[visa['Date'].isin(mastercard['Date'])]
-        print(mastercard.describe())
-        print(visa.describe())
-        # reading adjusted closing values for mastercard and visa
-        mastercard_closing_values = mastercard['Adj Close']
-        visa_closing_values = visa['Adj Close']
-        # storing dates for pyplot
-        self.dates = mastercard['Date']
-        return mastercard_closing_values, visa_closing_values
+        self.mastercard_db = self.mastercard_db[self.mastercard_db['Date'].isin(self.visa_db['Date'])]
+        self.visa_db = self.visa_db[self.visa_db['Date'].isin(self.mastercard_db['Date'])]
+        # reading date and adjusted closing values for mastercard and visa
+        self.mastercard_db = self.mastercard_db[['Date', 'Adj Close']]
+        self.visa_db = self.visa_db[['Date', 'Adj Close']]
     
-    def split_data(self, mastercard_closing_values, visa_closing_values):
+    def split_data(self):
         # splitting the data into training and testing data (65:35 ratio)
         train_test_split_ratio = 0.65
-        train_size = int(train_test_split_ratio * len(mastercard_closing_values))
-        mastercard_train = mastercard_closing_values[:train_size]
-        visa_train = visa_closing_values[:train_size]
-        mastercard_test = mastercard_closing_values[train_size:]
-        visa_test = visa_closing_values[train_size:]
+        train_size = int(train_test_split_ratio * len(self.mastercard_db['Adj Close']))
+        self.mastercard_train = self.mastercard_db['Adj Close'][:train_size]
+        self.visa_train = self.visa_db['Adj Close'][:train_size]
+        self.mastercard_test = self.mastercard_db['Adj Close'][train_size:]
+        self.visa_test = self.visa_db['Adj Close'][train_size:]
+        # resetting the index for the testing data
+        self.mastercard_test.reset_index(drop = True, inplace = True)
+        self.visa_test.reset_index(drop = True, inplace = True)
         # storing dates for pyplot
-        self.train_dates = pd.to_datetime(self.dates[:train_size])
-        self.test_dates = pd.to_datetime(self.dates[train_size:])
-        return mastercard_train, visa_train, mastercard_test, visa_test
+        self.dates_train = self.mastercard_db['Date'][:train_size]
+        self.dates_test = self.mastercard_db['Date'][train_size:]
+        # parsing dates
+        self.dates_train = pd.to_datetime(self.dates_train)
+        self.dates_test = pd.to_datetime(self.dates_test)
     
     def find_correlation(self, mastercard_data, visa_data):
         # finding the correlation between the stock prices of mastercard and visa data
         correlation = np.corrcoef(mastercard_data, visa_data)[0][1]
         print(f'correlation = {correlation}')
         # checking if the correlation is high enough for pair trading
-        # if correlation < 0.95:
-        #     print(f'The correlation is {correlation}. The pair of stocks is not suitable for pair trading')
-        #     sys.exit()
+        if correlation < 0.9:
+            print(f'The correlation is {correlation}. The pair of stocks is not suitable for pair trading')
+            sys.exit()
         return correlation
     
     def find_p_value(self, mastercard_data, visa_data):
         # finding the p-value of the ADF test for co-integration
         result = coint(mastercard_data, visa_data)
         p_value = result[1]
+        print(f'p-value = {p_value}')
         # checking if the p-value is low enough for pair trading
         if p_value > 0.1:
             print(f'The p-value is {p_value}. The pair of stocks is not suitable for pair trading')
@@ -90,48 +96,81 @@ class PairTradingStrategy:
         residual_std = np.std(residuals)
         return residuals, residual_mean, residual_std
     
-    def train(self, mastercard_data, visa_data):
-        correlation = self.find_correlation(mastercard_data, visa_data)
-        coint_p_value = self.find_p_value(mastercard_data, visa_data)
-        print(f'correlation = {correlation}')
-        print(f'cointegration p-value = {coint_p_value}')
-        model = self.regression(mastercard_data, visa_data)
-        print(model.summary())
-        # getting the hedge ratio from the model. 
+    def train(self):
+        correlation = self.find_correlation(self.mastercard_train, self.visa_train)
+        coint_p_value = self.find_p_value(self.mastercard_train, self.visa_train)
+        # getting the hedge ratio from the model
         # this tells us how many stocks of visa we should buy for each stock of mastercard
-        hedge_ratio = model.params[0]
-        print(f'hedge ratio: {hedge_ratio}')
-        return hedge_ratio
+        model = self.regression(self.mastercard_train, self.visa_train)
+        self.hedge_ratio = model.params[0]
+        print(f'hedge ratio: {self.hedge_ratio}')
     
-    def generate_z_score(self, mastercard_data, visa_data, hedge_ratio, dates_used):
-        residuals, residual_mean, residual_std = self.generate_residuals(mastercard_data, visa_data, hedge_ratio)
-        z_score = (residuals - residual_mean) / residual_std
+    def generate_z_score(self, mastercard_data, visa_data, dates):
+        residuals, residual_mean, residual_std = self.generate_residuals(mastercard_data, visa_data, self.hedge_ratio)
+        self.z_score = (residuals - residual_mean) / residual_std
+    
+    def get_profit(self, current_balance, mastercard_stocks, visa_stocks, mastercard_price, visa_price):
+        return current_balance + (mastercard_stocks * mastercard_price) + (visa_stocks * visa_price)
 
-        plt.figure(figsize = (10, 5))
-        plt.plot(dates_used, z_score)
-        if list(dates_used) == list(self.train_dates):
-            plt.title('Z-score of training data')
-        else:
-            plt.title('Z-score of testing data')
-        plt.xlabel('Dates')
-        plt.xticks(rotation = 45, ha = 'right')
-        plt.ylabel('Z-score')
-        plt.axhline(1, color = 'red', linestyle = '--')
-        plt.axhline(0, color = 'black', linestyle = '-')
-        plt.axhline(-1, color = 'red', linestyle = '--')
-        plt.show()
-
-        
+    def simulate_trading(self, mastercard_data, visa_data):
+        mastercard_stocks = 0
+        visa_stocks = 0
+        current_balance = 0
+        z_score_list = list(self.z_score)
+        self.profits.clear()
+        for i in range(len(mastercard_data)):
+            # if the z-score is > 0.75, then short the dependent stock and long the independent stock
+            if z_score_list[i] > 0.75:
+                mastercard_stocks -= 1
+                visa_stocks += self.hedge_ratio
+                if mastercard_stocks < -100 or visa_stocks > 100:
+                    mastercard_stocks += 1
+                    visa_stocks -= self.hedge_ratio
+                    current_profit = self.get_profit(current_balance, mastercard_stocks, visa_stocks, mastercard_data[i], visa_data[i])
+                    self.profits.append(current_profit)
+                    continue
+                # calculating the profit
+                current_balance += (mastercard_data[i]) - (visa_data[i] * self.hedge_ratio)
+            # if the z-score is < -0.75, then long the dependent stock and short the independent stock
+            elif z_score_list[i] < -0.75:
+                mastercard_stocks += 1
+                visa_stocks -= self.hedge_ratio
+                if mastercard_stocks > 100 or visa_stocks < -100:
+                    mastercard_stocks -= 1
+                    visa_stocks += self.hedge_ratio
+                    current_profit = self.get_profit(current_balance, mastercard_stocks, visa_stocks, mastercard_data[i], visa_data[i])
+                    self.profits.append(current_profit)
+                    continue
+                # calculating the profit
+                current_balance += (visa_data[i] * self.hedge_ratio) - (mastercard_data[i])
+            # if the z-score is between -0.25 and 0.25, we close the positions
+            # if the z-score is beyond -3 and 3, we trigger stop loss
+            # if it is the last day of the market, we even our position
+            if (-0.25 < z_score_list[i] < 0.25) or (z_score_list[i] > 3 or z_score_list[i] < -3) or (i == len(mastercard_data) - 1):
+                current_balance += mastercard_stocks * mastercard_data[i] + visa_stocks * visa_data[i]
+                mastercard_stocks = 0
+                visa_stocks = 0
+            current_profit = self.get_profit(current_balance, mastercard_stocks, visa_stocks, mastercard_data[i], visa_data[i])
+            self.profits.append(current_profit)
+        return self.profits
 
 def main():
     obj = PairTradingStrategy()
-    mastercard_closing_values, visa_closing_values = obj.read_data()
-    mastercard_train, visa_train, mastercard_test, visa_test = obj.split_data(mastercard_closing_values, visa_closing_values)
+    obj.read_data()
+    obj.split_data()
 
-    hedge_ratio = obj.train(mastercard_train, visa_train)
-    obj.generate_z_score(mastercard_train, visa_train, hedge_ratio, obj.train_dates)
+    obj.train()
+    obj.generate_z_score(obj.mastercard_train, obj.visa_train, obj.dates_train)
+    plot_data(obj.dates_train, obj.z_score, 'Training Data Z-Score', 'Date', 'Z-Score', True)
 
-    obj.generate_z_score(mastercard_test, visa_test, hedge_ratio, obj.test_dates)
+    train_profits = obj.simulate_trading(obj.mastercard_train, obj.visa_train)
+    plot_data(obj.dates_train, train_profits, 'Training Data Value', 'Date', 'Total Value', False)
+
+    obj.generate_z_score(obj.mastercard_test, obj.visa_test, obj.dates_test)
+    plot_data(obj.dates_test, obj.z_score, 'Testing Data Z-Score', 'Date', 'Z-Score', True)
+
+    test_profits = obj.simulate_trading(obj.mastercard_test, obj.visa_test)
+    plot_data(obj.dates_test, test_profits, 'Testing Data Value', 'Date', 'Total Value', False)
     
 
 if __name__ == "__main__":
