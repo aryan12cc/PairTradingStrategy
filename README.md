@@ -1,5 +1,5 @@
 # PairTradingStrategy
-This is a Pair Trading strategy model for 2 stocks. The spread between the two stocks is mean-reverting, and the strategy uses this to generate profits by trading between the 2 stocks. It is a Market Neutral Statistical Arbitrage strategy.
+This is a Pair Trading strategy model for 2 stocks. The spread between the two stocks is mean-reverting, and the strategy uses this to generate profits by trading between the 2 stocks. It is a Market Neutral Statistical Arbitrage strategy. The report for the project is in `Report.pdf`.
 
 ### Code
 The code for the strategy is in `pair-trading-strategy.py`.
