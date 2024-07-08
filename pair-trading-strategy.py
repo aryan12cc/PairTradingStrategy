@@ -127,6 +127,11 @@ class PairTradingStrategy:
         mastercard_stocks = 0
         visa_stocks = 0
         current_balance = 0
+        # current_capital_invested keeps the total money required to start the trade
+        # since the trade is a hedged trade, current_capital_invested is the money required to go long
+        # we also add a margin of 20%
+        current_capital_invested = 0
+        max_capital_invested = 0
         z_score_list = list(self.z_score)
         self.profits.clear()
         for i in range(len(mastercard_data)):
@@ -136,23 +141,27 @@ class PairTradingStrategy:
                     mastercard_stocks -= 1
                     visa_stocks += self.hedge_ratio
                     current_balance += (mastercard_data[i]) - (visa_data[i] * self.hedge_ratio)
+                    current_capital_invested -= 1.2 * mastercard_data[i]
             # if the z-score is < -0.75, then long mastercard, short visa
             elif z_score_list[i] < -0.75:
                 if self.check_trade(mastercard_stocks, visa_stocks, mastercard_data, visa_data, i, 'Visa') == True:
                     mastercard_stocks += 1
                     visa_stocks -= self.hedge_ratio
                     current_balance += (visa_data[i] * self.hedge_ratio) - (mastercard_data[i])
+                    current_capital_invested += 1.2 * mastercard_data[i]
             # if the z-score is between -0.25 and 0.25, we close the positions
             # if the z-score is beyond -3 and 3, we trigger stop loss
             # if it is the last day of the market, we even our position
             if (-0.25 < z_score_list[i] < 0.25) or (z_score_list[i] > 3 or z_score_list[i] < -3) or (i == len(mastercard_data) - 1):
                 current_balance += mastercard_stocks * mastercard_data[i] + visa_stocks * visa_data[i]
+                max_capital_invested = max(max_capital_invested, abs(current_capital_invested))
+                current_capital_invested = 0
                 mastercard_stocks = 0
                 visa_stocks = 0
             # calculating profit
             current_profit = self.get_profit(current_balance, mastercard_stocks, visa_stocks, mastercard_data[i], visa_data[i])
             self.profits.append(current_profit)
-        return self.profits
+        return self.profits, max_capital_invested
 
 def main():
     obj = PairTradingStrategy()
@@ -163,16 +172,18 @@ def main():
     obj.generate_z_score(obj.mastercard_train, obj.visa_train, obj.dates_train)
     plot_data(obj.dates_train, obj.z_score, 'Training Data Z-Score', 'Date', 'Z-Score', True)
 
-    train_profits = obj.simulate_trading(obj.mastercard_train, obj.visa_train)
+    train_profits, train_max_capital_invested = obj.simulate_trading(obj.mastercard_train, obj.visa_train)
     plot_data(obj.dates_train, train_profits, 'Training Data Value', 'Date', 'Total Value in USD', False)
     print(f'Training data profits: ${train_profits[-1]}')
+    print(f'Training data return value: {train_profits[-1] / train_max_capital_invested * 100}%')
 
     obj.generate_z_score(obj.mastercard_test, obj.visa_test, obj.dates_test)
     plot_data(obj.dates_test, obj.z_score, 'Testing Data Z-Score', 'Date', 'Z-Score', True)
 
-    test_profits = obj.simulate_trading(obj.mastercard_test, obj.visa_test)
+    test_profits, test_max_capital_invested = obj.simulate_trading(obj.mastercard_test, obj.visa_test)
     plot_data(obj.dates_test, test_profits, 'Testing Data Value', 'Date', 'Total Value in USD', False)
     print(f'Testing data profits: ${test_profits[-1]}')
+    print(f'Testing data return value: {test_profits[-1] / test_max_capital_invested * 100}%')
     
 
 if __name__ == "__main__":
