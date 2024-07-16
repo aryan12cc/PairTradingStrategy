@@ -143,7 +143,7 @@ class PairTradingStrategy:
         for year in range(1, len(self.profits) // 365 + 1):
             end_of_year_profit = profits[year * 365 - 1]
             end_of_year_capital_invested = max_capital_invested[year * 365 - 1]
-            print(f'    Year {year} return value: {(end_of_year_profit - last_year_end_profit) / (end_of_year_capital_invested) * 100}%')
+            print(f'    Year {year} return value: {round((end_of_year_profit - last_year_end_profit) / (end_of_year_capital_invested) * 100, 2)}%')
             last_year_end_profit = end_of_year_profit
 
     def simulate_trading(self, mastercard_data, visa_data):
@@ -190,35 +190,36 @@ class PairTradingStrategy:
 
 def main():
     # running multiple strategies with different market signal conditions
-    mastercard_short_sd_list = [0.75, 1, 0.75, 0.75]
-    mastercard_long_sd_list = [-0.75, -1, -0.75, -0.75]
-    closing_position_sd_list = [0.25, 0.25, 0.25, 0.1]
-    stop_loss_sd_list = [3, 3, 2.5, 3]
-    for i in range(4):
-        obj = PairTradingStrategy(mastercard_short_sd_list[i], mastercard_long_sd_list[i], closing_position_sd_list[i], stop_loss_sd_list[i])
-        obj.read_data()
-        obj.split_data()
+    pair_tradining_strategies = {
+        'Strategy 1': PairTradingStrategy(0.75, 1, 0.75, 3),
+        'Strategy 2': PairTradingStrategy(1, 1.25, 0.75, 3),
+        'Strategy 3': PairTradingStrategy(0.75, 1, 0.25, 3),
+        'Strategy 4': PairTradingStrategy(0.75, 1, 0.75, 2.5)
+    }
+    for strategy in pair_tradining_strategies.values():
+        strategy.read_data()
+        strategy.split_data()
 
-        obj.train()
-        obj.generate_z_score(obj.mastercard_train, obj.visa_train, obj.dates_train)
-        plot_data(obj.dates_train, obj.z_score, 'Training Data Z-Score', 'Date', 'Z-Score', True, obj.mastercard_short_sd, obj.mastercard_long_sd, obj.closing_position_sd, obj.stop_loss_sd)
+        strategy.train()
+        strategy.generate_z_score(strategy.mastercard_train, strategy.visa_train, strategy.dates_train)
+        plot_data(strategy.dates_train, strategy.z_score, 'Training Data Z-Score', 'Date', 'Z-Score', True, strategy.mastercard_short_sd, strategy.mastercard_long_sd, strategy.closing_position_sd, strategy.stop_loss_sd)
 
-        train_profits, train_max_capital_invested = obj.simulate_trading(obj.mastercard_train, obj.visa_train)
-        plot_data(obj.dates_train, train_profits, 'Training Data Value', 'Date', 'Total Value in USD', False)
-        print(f'  Training data profits: ${train_profits[-1]}')
+        train_profits, train_max_capital_invested = strategy.simulate_trading(strategy.mastercard_train, strategy.visa_train)
+        plot_data(strategy.dates_train, train_profits, 'Training Data Value', 'Date', 'Total Value in USD', False)
+        print(f'  Training data profits: ${round(train_profits[-1], 2)}')
         print(f'  Training data return values')
-        obj.yearly_return_values(train_profits, train_max_capital_invested)
-        print(f'    Training data return value: {train_profits[-1] / train_max_capital_invested[-1] * 100}%')
+        strategy.yearly_return_values(train_profits, train_max_capital_invested)
+        print(f'    Training data return value: {round(train_profits[-1] / train_max_capital_invested[-1] * 100, 2)}%')
 
-        obj.generate_z_score(obj.mastercard_test, obj.visa_test, obj.dates_test)
-        plot_data(obj.dates_test, obj.z_score, 'Testing Data Z-Score', 'Date', 'Z-Score', True, obj.mastercard_short_sd, obj.mastercard_long_sd, obj.closing_position_sd, obj.stop_loss_sd)
+        strategy.generate_z_score(strategy.mastercard_test, strategy.visa_test, strategy.dates_test)
+        plot_data(strategy.dates_test, strategy.z_score, 'Testing Data Z-Score', 'Date', 'Z-Score', True, strategy.mastercard_short_sd, strategy.mastercard_long_sd, strategy.closing_position_sd, strategy.stop_loss_sd)
 
-        test_profits, test_max_capital_invested = obj.simulate_trading(obj.mastercard_test, obj.visa_test)
-        plot_data(obj.dates_test, test_profits, 'Testing Data Value', 'Date', 'Total Value in USD', False)
-        print(f'  Testing data profits: ${test_profits[-1]}')
+        test_profits, test_max_capital_invested = strategy.simulate_trading(strategy.mastercard_test, strategy.visa_test)
+        plot_data(strategy.dates_test, test_profits, 'Testing Data Value', 'Date', 'Total Value in USD', False)
+        print(f'  Testing data profits: ${round(test_profits[-1], 2)}')
         print(f'  Testing data return values')
-        obj.yearly_return_values(test_profits, test_max_capital_invested)
-        print(f'    Testing data return value: {test_profits[-1] / test_max_capital_invested[-1] * 100}%')
+        strategy.yearly_return_values(test_profits, test_max_capital_invested)
+        print(f'    Testing data return value: {round(test_profits[-1] / test_max_capital_invested[-1] * 100, 2)}%')
     
 if __name__ == "__main__":
     main()
