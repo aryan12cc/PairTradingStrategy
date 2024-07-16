@@ -68,15 +68,16 @@ class PairTradingStrategy:
         self.visa_train = self.visa_db['Adj Close'][:train_size]
         self.mastercard_test = self.mastercard_db['Adj Close'][train_size:]
         self.visa_test = self.visa_db['Adj Close'][train_size:]
-        # resetting the index for the testing data
-        self.mastercard_test.reset_index(drop = True, inplace = True)
-        self.visa_test.reset_index(drop = True, inplace = True)
         # storing dates for pyplot
         self.dates_train = self.mastercard_db['Date'][:train_size]
         self.dates_test = self.mastercard_db['Date'][train_size:]
         # parsing dates
         self.dates_train = pd.to_datetime(self.dates_train)
         self.dates_test = pd.to_datetime(self.dates_test)
+        # resetting the index for the testing data
+        self.mastercard_test.reset_index(drop = True, inplace = True)
+        self.visa_test.reset_index(drop = True, inplace = True)
+        self.dates_test.reset_index(drop = True, inplace = True)
     
     def find_correlation(self, mastercard_data, visa_data):
         # finding the correlation between the stock prices of mastercard and visa data
@@ -138,13 +139,30 @@ class PairTradingStrategy:
                 return False
             return True
     
-    def yearly_return_values(self, profits, max_capital_invested):
+    def check_year_gap(self, current_date, previous_date):
+        # removing the time of the day
+        current_date = str(current_date)[:10]
+        previous_date = str(previous_date)[:10]
+        
+        # extracting the day, month and year
+        current_year, current_month, current_day = int(current_date[:4]), int(current_date[5:7]), int(current_date[8:])
+        previous_year, previous_month, previous_day = int(previous_date[:4]), int(previous_date[5:7]), int(previous_date[8:])
+
+        # checking if the gap between the two dates is more than a year
+        if current_year - previous_year > 1 or (current_year - previous_year == 1 and current_month > previous_month) or (current_year - previous_year == 1 and current_month == previous_month and current_day >= previous_day):
+            return True
+        return False
+
+    def yearly_return_values(self, profits, max_capital_invested, dates):
         last_year_end_profit = 0
-        for year in range(1, len(self.profits) // 365 + 1):
-            end_of_year_profit = profits[year * 365 - 1]
-            end_of_year_capital_invested = max_capital_invested[year * 365 - 1]
-            print(f'    Year {year} return value: {round((end_of_year_profit - last_year_end_profit) / (end_of_year_capital_invested) * 100, 2)}%')
-            last_year_end_profit = end_of_year_profit
+        last_year_start_index = 0
+        for idx in range(len(self.profits)):
+            if self.check_year_gap(dates[idx], dates[last_year_start_index]) == True:
+                end_of_year_profit = profits[idx - 1]
+                end_of_year_capital_invested = max_capital_invested[idx - 1]
+                print(f'    Year {str(dates[idx])[:4]} return value: {round((end_of_year_profit - last_year_end_profit) / (end_of_year_capital_invested) * 100, 2)}%')
+                last_year_end_profit = end_of_year_profit
+                last_year_start_index = idx
 
     def simulate_trading(self, mastercard_data, visa_data):
         mastercard_stocks = 0
@@ -191,10 +209,10 @@ class PairTradingStrategy:
 def main():
     # running multiple strategies with different market signal conditions
     pair_tradining_strategies = {
-        'Strategy 1': PairTradingStrategy(0.75, 1, 0.75, 3),
-        'Strategy 2': PairTradingStrategy(1, 1.25, 0.75, 3),
-        'Strategy 3': PairTradingStrategy(0.75, 1, 0.25, 3),
-        'Strategy 4': PairTradingStrategy(0.75, 1, 0.75, 2.5)
+        'Strategy 1': PairTradingStrategy(0.75, -0.75, 0.25, 3),
+        'Strategy 2': PairTradingStrategy(1, -1, 0.25, 3),
+        'Strategy 3': PairTradingStrategy(0.75, -0.75, 0.25, 2.5),
+        'Strategy 4': PairTradingStrategy(0.75, -0.75, 0.1, 3)
     }
     for strategy in pair_tradining_strategies.values():
         strategy.read_data()
@@ -208,7 +226,7 @@ def main():
         plot_data(strategy.dates_train, train_profits, 'Training Data Value', 'Date', 'Total Value in USD', False)
         print(f'  Training data profits: ${round(train_profits[-1], 2)}')
         print(f'  Training data return values')
-        strategy.yearly_return_values(train_profits, train_max_capital_invested)
+        strategy.yearly_return_values(train_profits, train_max_capital_invested, strategy.dates_train)
         print(f'    Training data return value: {round(train_profits[-1] / train_max_capital_invested[-1] * 100, 2)}%')
 
         strategy.generate_z_score(strategy.mastercard_test, strategy.visa_test, strategy.dates_test)
@@ -218,7 +236,7 @@ def main():
         plot_data(strategy.dates_test, test_profits, 'Testing Data Value', 'Date', 'Total Value in USD', False)
         print(f'  Testing data profits: ${round(test_profits[-1], 2)}')
         print(f'  Testing data return values')
-        strategy.yearly_return_values(test_profits, test_max_capital_invested)
+        strategy.yearly_return_values(test_profits, test_max_capital_invested, strategy.dates_test)
         print(f'    Testing data return value: {round(test_profits[-1] / test_max_capital_invested[-1] * 100, 2)}%')
     
 if __name__ == "__main__":
