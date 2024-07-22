@@ -47,7 +47,7 @@ class PairTradingStrategy:
         self.mastercard_long_sd = mastercard_long_sd
         self.closing_position_sd = closing_position_sd
         self.stop_loss_sd = stop_loss_sd
-        print(f'Standard deviation lines (mastercard short, mastercard long, exit, stop loss): ({mastercard_short_sd}, {mastercard_long_sd}, {closing_position_sd}, {stop_loss_sd})')
+        self.margin_value = 0.3
 
     def read_data(self):
         # reading mastercard and visa data
@@ -130,7 +130,7 @@ class PairTradingStrategy:
 
     def check_trade(self, mastercard_stocks, visa_stocks, mastercard_data, visa_data, current_iter, buy_stock_name):
         # checking if trade is possible without exceeding the limit of max stocks
-        if buy_stock_name == 'Visa':
+        if buy_stock_name == 'Mastercard':
             if abs(mastercard_stocks - 1) > 100 or abs(visa_stocks + mastercard_data[current_iter] / visa_data[current_iter]) > 100:
                 return False
             return True
@@ -170,7 +170,7 @@ class PairTradingStrategy:
         current_balance = 0
         # current_capital_invested keeps the total money required to start the trade
         # since the trade is a hedged trade, current_capital_invested is the money required to go long
-        # we also add a margin of 20%
+        # we also add a margin of 30%
         current_capital_invested = 0
         z_score_list = list(self.z_score)
         self.profits.clear()
@@ -181,16 +181,16 @@ class PairTradingStrategy:
             if z_score_list[i] > self.mastercard_short_sd:
                 if self.check_trade(mastercard_stocks, visa_stocks, mastercard_data, visa_data, i, 'Mastercard') == True:
                     mastercard_stocks -= 1
-                    visa_stocks += self.hedge_ratio
-                    current_balance += (mastercard_data[i]) - (visa_data[i] * self.hedge_ratio)
-                    current_capital_invested -= 0.2 * mastercard_data[i]
+                    visa_stocks += mastercard_data[i] / visa_data[i]
+                    current_capital_invested -= self.margin_value * mastercard_data[i]
+                    current_max_capital_invested = max(current_max_capital_invested, abs(current_capital_invested))
             # if the z-score is < mastercard_long standard deviation, then long mastercard, short visa
             elif z_score_list[i] < self.mastercard_long_sd:
                 if self.check_trade(mastercard_stocks, visa_stocks, mastercard_data, visa_data, i, 'Visa') == True:
                     mastercard_stocks += 1
-                    visa_stocks -= self.hedge_ratio
-                    current_balance += (visa_data[i] * self.hedge_ratio) - (mastercard_data[i])
-                    current_capital_invested += 0.2 * mastercard_data[i]
+                    visa_stocks -= mastercard_data[i] / visa_data[i]
+                    current_capital_invested += self.margin_value * mastercard_data[i]
+                    current_max_capital_invested = max(current_max_capital_invested, abs(current_capital_invested))
             # if the z-score is between closing position standard deviations, we close the positions
             # if the z-score is beyond stop loss standard deviations, we trigger stop loss
             # if it is the last day of the market, we even our position
@@ -215,6 +215,11 @@ def main():
         'Strategy 4': PairTradingStrategy(0.75, -0.75, 0.1, 3)
     }
     for strategy in pair_tradining_strategies.values():
+        print('Current Strategy Values')
+        print(f'Mastercard Short SD: {strategy.mastercard_short_sd}')
+        print(f'Mastercard Long SD: {strategy.mastercard_long_sd}')
+        print(f'Closing Position SD: {strategy.closing_position_sd}')
+        print(f'Stop Loss SD: {strategy.stop_loss_sd}')
         strategy.read_data()
         strategy.split_data()
 
