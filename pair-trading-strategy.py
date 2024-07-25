@@ -47,7 +47,7 @@ class PairTradingStrategy:
         self.mastercard_long_sd = mastercard_long_sd
         self.closing_position_sd = closing_position_sd
         self.stop_loss_sd = stop_loss_sd
-        self.margin_value = 0.35
+        self.margin_value = 1.2
 
     def read_data(self):
         # reading mastercard and visa data
