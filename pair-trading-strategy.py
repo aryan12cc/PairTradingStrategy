@@ -170,7 +170,7 @@ class PairTradingStrategy:
         current_balance = 0
         # current_capital_invested keeps the total money required to start the trade
         # since the trade is a hedged trade, current_capital_invested is the money required to go long
-        # we also add a margin of 30%
+        # we also add a margin of 20%
         current_capital_invested = 0
         z_score_list = list(self.z_score)
         self.profits.clear()
